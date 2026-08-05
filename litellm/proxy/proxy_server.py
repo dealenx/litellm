@@ -2217,6 +2217,7 @@ async def get_current_spend(
     max_budget: float | None = None,
     window_entity_type: str | None = None,
     window_entity_id: str | None = None,
+    window_duration: str | None = None,
     window_start: datetime | None = None,
     fallback_authoritative: bool = False,
 ) -> float:
@@ -2241,7 +2242,8 @@ async def get_current_spend(
     runs and a key can leak spend past ``max_budget`` indefinitely. The
     authoritative source depends on the counter: primary key/team/user/org
     counters read the DB row; per-window counters (``window_start`` supplied)
-    aggregate spend logs; end-user/tag counters have no DB row, so the caller's
+    read the maintained window-spend row and only aggregate spend logs when
+    that row is missing or stale; end-user/tag counters have no DB row, so the caller's
     ``fallback_spend`` (loaded fresh in auth) is authoritative. The DB read is
     skipped for healthy primary counters (counter at or above recorded spend)
     and cached in-process for a few seconds, so a persistently stale counter
@@ -2266,6 +2268,7 @@ async def get_current_spend(
             counter_key=counter_key,
             window_entity_type=window_entity_type,
             window_entity_id=window_entity_id,
+            window_duration=window_duration,
             window_start=window_start,
         )
         if authoritative is not None:
@@ -2347,6 +2350,7 @@ async def _authoritative_floor_spend(
     counter_key: str,
     window_entity_type: str | None = None,
     window_entity_id: str | None = None,
+    window_duration: str | None = None,
     window_start: datetime | None = None,
 ) -> float | None:
     marker_key: Final = f"spend_db_floor:{counter_key}"
@@ -2361,10 +2365,11 @@ async def _authoritative_floor_spend(
         and window_entity_id is not None
         and window_start is not None
     ):
-        db_spend = await SpendCounterReseed.window_from_spend_logs(
+        db_spend = await SpendCounterReseed.window_from_db(
             prisma_client=prisma_client,
             entity_type=window_entity_type,
             entity_id=window_entity_id,
+            window_duration=window_duration,
             window_start=window_start,
         )
     if db_spend is None:
@@ -2489,6 +2494,7 @@ async def increment_spend_counters(
                     counter_key=key_window_counter,
                     entity_type="Key",
                     entity_id=hashed_token,
+                    window_duration=duration,
                     window_start=key_window_start,
                     increment=cost,
                 )
@@ -2530,6 +2536,7 @@ async def increment_spend_counters(
                     counter_key=team_window_counter,
                     entity_type="Team",
                     entity_id=scope_team_id,
+                    window_duration=duration,
                     window_start=team_window_start,
                     increment=cost,
                 )
@@ -2782,6 +2789,7 @@ async def _init_and_increment_window_spend_counter(
     counter_key: str,
     entity_type: str,
     entity_id: str,
+    window_duration: str | None,
     window_start: datetime | None,
     increment: float,
 ):
@@ -2796,6 +2804,7 @@ async def _init_and_increment_window_spend_counter(
         counter_key=counter_key,
         entity_type=entity_type,
         entity_id=entity_id,
+        window_duration=window_duration,
         window_start=window_start,
     )
     if initialized is False:
@@ -2841,6 +2850,7 @@ async def _ensure_window_spend_counter_initialized(
     counter_key: str,
     entity_type: str,
     entity_id: str,
+    window_duration: str | None,
     window_start: datetime,
 ) -> bool:
     is_warm: Final = await _is_spend_counter_cache_warm(counter_key=counter_key)
@@ -2853,6 +2863,7 @@ async def _ensure_window_spend_counter_initialized(
         counter_key=counter_key,
         entity_type=entity_type,
         entity_id=entity_id,
+        window_duration=window_duration,
         window_start=window_start,
     )
     if window_spend is None:

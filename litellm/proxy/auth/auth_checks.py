@@ -3708,6 +3708,7 @@ async def _virtual_key_multi_budget_check(
             max_budget=w["max_budget"],
             window_entity_type="Key",
             window_entity_id=valid_token.token,
+            window_duration=str(w["budget_duration"]),
             window_start=get_budget_window_start(w),
         )
         if math.isfinite(w["max_budget"]) and window_spend >= w["max_budget"]:
@@ -4081,6 +4082,7 @@ async def _team_multi_budget_check(
             max_budget=w["max_budget"],
             window_entity_type="Team",
             window_entity_id=team_object.team_id,
+            window_duration=str(w["budget_duration"]),
             window_start=get_budget_window_start(w),
         )
         if math.isfinite(w["max_budget"]) and window_spend >= w["max_budget"]:

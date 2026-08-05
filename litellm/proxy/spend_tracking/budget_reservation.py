@@ -37,6 +37,7 @@ class _BudgetCounter:
     entity_id: str
     source_cache_key: str | None = None
     spend_log_entity_id: str | None = None
+    window_duration: str | None = None
     window_start: datetime | None = None
 
 
@@ -637,6 +638,7 @@ def _get_budget_limit_counters(
                 entity_type=entity_type,
                 entity_id=f"{entity_id}:{budget_duration}",
                 spend_log_entity_id=entity_id,
+                window_duration=str(budget_duration),
                 window_start=window_start,
             )
         )
@@ -680,6 +682,7 @@ async def _reserve_counter(
                 counter_key=counter.counter_key,
                 entity_type=counter.entity_type,
                 entity_id=counter.spend_log_entity_id,
+                window_duration=counter.window_duration,
                 window_start=counter.window_start,
             )
             if initialized is False:
