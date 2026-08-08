@@ -96,6 +96,7 @@ from litellm.proxy.management_helpers.team_member_permission_checks import (
     TeamMemberPermissionChecks,
 )
 from litellm.proxy.management_helpers.utils import management_endpoint_wrapper
+from litellm.proxy.spend_tracking.budget_reservation import get_budget_window_start
 from litellm.proxy.spend_tracking.spend_tracking_utils import _is_master_key
 from litellm.proxy.ui_crud_endpoints.proxy_setting_endpoints import (
     get_ui_settings_cached,
@@ -118,6 +119,7 @@ from litellm.repositories.table_repositories import (
 )
 from litellm.repositories.team_repository import TeamRepository
 from litellm.repositories.user_repository import UserRepository
+from litellm.repositories.table_repositories import BudgetWindowSpendRepository
 from litellm.repositories.verification_token_repository import (
     VerificationTokenRepository,
 )
@@ -3590,6 +3592,34 @@ async def info_key_fn(
             # if using pydantic v1
             key_info = key_info.dict()
         key_token_hash: Final = key_info.pop("token")
+
+        ## ENRICH budget_limits WITH PER-WINDOW SPEND ##
+        budget_limits: list[Any] = key_info.get("budget_limits") or []
+        if budget_limits and key_token_hash and prisma_client is not None:
+            try:
+                budget_window_spend_rows = await BudgetWindowSpendRepository(
+                    prisma_client
+                ).table.find_many(
+                    where={
+                        "entity_type": "key",
+                        "entity_id": key_token_hash,
+                    }
+                )
+                window_spend_by_duration: dict[str, float] = {
+                    row.window_duration: float(row.spend or 0.0)
+                    for row in budget_window_spend_rows
+                }
+                for window in budget_limits:
+                    if not isinstance(window, dict):
+                        continue
+                    duration = window.get("budget_duration")
+                    if duration is None:
+                        continue
+                    window["spend"] = window_spend_by_duration.get(duration, 0.0)
+            except Exception:
+                verbose_proxy_logger.exception(
+                    "Failed to read per-window spend for key info"
+                )
 
         model_max_budget = key_info.get("model_max_budget") or {}
         budget_table: Final = key_info.get("litellm_budget_table") or {}
